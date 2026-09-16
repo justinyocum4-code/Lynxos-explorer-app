@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lynxos Explore</title>
+<style>
+  :root { --gold: #f5c518; --bg: #000; --panel: #111; --text: #fff; --muted: #aaa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: Arial, Helvetica, sans-serif; font-size: 20px; }
+  #explore-app { max-width: 640px; margin: 0 auto; padding: 12px 12px 90px; }
+  h1 { color: var(--gold); font-size: 28px; text-align: center; margin: 8px 0 4px; }
+  .tagline { text-align: center; color: var(--muted); font-size: 16px; margin: 0 0 12px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs button { flex: 1; padding: 14px 4px; font-size: 17px; font-weight: bold;
+    background: var(--panel); color: var(--text); border: 2px solid #333; border-radius: 999px; }
+  .tabs button[aria-selected="true"] { background: var(--gold); color: #000; border-color: var(--gold); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--panel); border: 1px solid #333; border-radius: 12px;
+          padding: 14px; margin-bottom: 12px; }
+  .card h2 { color: var(--gold); font-size: 22px; margin: 0 0 8px; }
+  .big-btn { display: block; width: 100%; padding: 18px; margin: 8px 0; font-size: 21px;
+    font-weight: bold; background: var(--gold); color: #000; border: none; border-radius: 12px; }
+  .ghost-btn { display: block; width: 100%; padding: 14px; margin: 8px 0; font-size: 19px;
+    background: #222; color: var(--text); border: 2px solid var(--gold); border-radius: 12px; }
+  .row { display: flex; gap: 8px; }
+  .row .big-btn, .row .ghost-btn { margin: 4px 0; }
+  #compass-face { font-size: 40px; font-weight: bold; color: var(--gold);
+    text-align: center; margin: 10px 0; }
+  #compass-deg { font-size: 24px; text-align: center; color: var(--text); }
+  #cam-preview { width: 100%; border-radius: 12px; background: #000; display: none; }
+  #status-live { position: absolute; left: -9999px; }
+  .poi { padding: 10px; border-bottom: 1px solid #333; font-size: 19px; }
+  .poi:last-child { border-bottom: none; }
+  .poi .d { color: var(--gold); }
+  .spot { display: flex; gap: 8px; align-items: center; padding: 10px;
+    border-bottom: 1px solid #333; }
+  .spot:last-child { border-bottom: none; }
+  .spot .nm { flex: 1; font-size: 19px; }
+  .spot button { padding: 12px 14px; font-size: 17px; border-radius: 10px; border: none;
+    background: var(--gold); color: #000; font-weight: bold; }
+  .spot button.stop { background: #a00; color: #fff; }
+  label.lbl { display: block; margin: 10px 0 4px; font-size: 18px; color: var(--muted); }
+  input[type="text"], input[type="password"] { width: 100%; padding: 14px; font-size: 19px;
+    border-radius: 10px; border: 2px solid #444; background: #000; color: #fff; }
+  .switch-row { display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 0; border-bottom: 1px solid #333; font-size: 19px; }
+  .switch-row:last-child { border-bottom: none; }
+  .switch { width: 72px; height: 40px; font-size: 18px; font-weight: bold; border-radius: 999px;
+    border: 2px solid var(--gold); background: #222; color: var(--text); }
+  .switch[aria-pressed="true"] { background: var(--gold); color: #000; }
+  #guide-banner { display: none; background: #1a2a00; border: 2px solid var(--gold);
+    border-radius: 12px; padding: 14px; margin-bottom: 12px; font-size: 20px; }
+  .note { color: var(--muted); font-size: 16px; }
+</style>
+</head>
+<body>
+<div id="explore-app">
+  <h1>Lynxos Explore</h1>
+  <p class="tagline">Your walking companion</p>
+
+  <div id="guide-banner" role="status"></div>
+
+  <div class="tabs" role="tablist" aria-label="Explore sections">
+    <button role="tab" aria-selected="true" data-tab="around" id="tab-around">Around Me</button>
+    <button role="tab" aria-selected="false" data-tab="compass" id="tab-compass">Compass</button>
+    <button role="tab" aria-selected="false" data-tab="camera" id="tab-camera">Camera</button>
+    <button role="tab" aria-selected="false" data-tab="spots" id="tab-spots">My Spots</button>
+  </div>
+
+  <div id="status-live" aria-live="polite"></div>
+
+  <!-- AROUND ME -->
+  <section class="panel active" id="panel-around" role="tabpanel" aria-labelledby="tab-around">
+    <div class="card">
+      <h2>Where you are</h2>
+      <p id="where-am-i">Getting your location&hellip;</p>
+      <button class="big-btn" id="btn-where">Where am I?</button>
+      <button class="ghost-btn" id="btn-refresh-poi">What's near me?</button>
+    </div>
+    <div class="card">
+      <h2>Nearby places</h2>
+      <div id="poi-list"><p class="note">Loading nearby places&hellip;</p></div>
+    </div>
+    <div class="card">
+      <h2>Walking announcements</h2>
+      <div class="switch-row">
+        <span>Announce places as I walk</span>
+        <button class="switch" id="sw-announce" aria-pressed="true">On</button>
+      </div>
+      <div class="switch-row">
+        <span>Voice announcements</span>
+        <button class="switch" id="sw-voice" aria-pressed="true">On</button>
+      </div>
+      <p class="note">When announcements are on, the app speaks nearby places every so often as you move.</p>
+    </div>
+  </section>
+
+  <!-- COMPASS -->
+  <section class="panel" id="panel-compass" role="tabpanel" aria-labelledby="tab-compass">
+    <div class="card">
+      <h2>Compass</h2>
+      <div id="compass-face" aria-hidden="true">--</div>
+      <div id="compass-deg">Waiting for compass&hellip;</div>
+      <button class="big-btn" id="btn-heading">Speak my direction</button>
+      <div class="switch-row">
+        <span>Auto-speak direction changes</span>
+        <button class="switch" id="sw-compass-auto" aria-pressed="false">Off</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CAMERA -->
+  <section class="panel" id="panel-camera" role="tabpanel" aria-labelledby="tab-camera">
+    <div class="card">
+      <h2>Look around</h2>
+      <video id="cam-preview" playsinline muted aria-label="Camera preview"></video>
+      <button class="big-btn" id="btn-cam-start">Start camera</button>
+      <div class="row">
+        <button class="big-btn" id="btn-describe" disabled>Describe view</button>
+      </div>
+      <button class="ghost-btn" id="btn-readsign" disabled>Read sign</button>
+      <p id="cam-result" class="note" role="status"></p>
+    </div>
+    <div class="card">
+      <h2>AI vision key</h2>
+      <p class="note">The camera description uses Google's free AI. Paste your free key once and it stays on your phone.</p>
+      <label class="lbl" for="gemini-key">Gemini API key</label>
+      <input type="password" id="gemini-key" autocomplete="off" aria-label="Gemini API key">
+      <button class="ghost-btn" id="btn-save-key">Save key</button>
+    </div>
+  </section>
+
+  <!-- SPOTS -->
+  <section class="panel" id="panel-spots" role="tabpanel" aria-labelledby="tab-spots">
+    <div class="card">
+      <h2>Save this spot</h2>
+      <label class="lbl" for="spot-name">Name this place (for example: bus stop)</label>
+      <input type="text" id="spot-name" aria-label="Spot name">
+      <button class="big-btn" id="btn-save-spot">Save my current spot</button>
+    </div>
+    <div class="card">
+      <h2>My saved spots</h2>
+      <div id="spot-list"><p class="note">No saved spots yet.</p></div>
+    </div>
+  </section>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  var GEMINI_MODEL = "gemini-2.5-flash";
+  var LS = { voice: "lxExplore.voice", announce: "lxExplore.announce",
+             key: "lxExplore.geminiKey", spots: "lxExplore.spots",
+             compassAuto: "lxExplore.compassAuto" };
+
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function read(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
+
+  // ---------- speech ----------
+  var voiceOn = read(LS.voice, "1") === "1";
+  function say(text) {
+    if (!voiceOn || !text) return;
+    try {
+      if (typeof LynxosTts !== "undefined" && LynxosTts.speak) { LynxosTts.speak(String(text)); return; }
+    } catch (e) {}
+    try {
+      var u = new SpeechSynthesisUtterance(String(text));
+      u.rate = 1.05;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  var liveEl = document.getElementById("status-live");
+  function status(text) { liveEl.textContent = text; }
+
+  // ---------- math helpers ----------
+  function toRad(d) { return d * Math.PI / 180; }
+  function toDeg(r) { return r * 180 / Math.PI; }
+  function distFeet(lat1, lon1, lat2, lon2) {
+    var R = 20902231; // earth radius in feet
+    var dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  function bearingTo(lat1, lon1, lat2, lon2) {
+    var dLon = toRad(lon2 - lon1);
+    var y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    var x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+  var DIRS = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
+  function compassDir(deg) { return DIRS[Math.round(deg / 45) % 8]; }
+  function fmtDist(feet) {
+    if (feet < 1000) return Math.round(feet / 10) * 10 + " feet";
+    return (feet / 5280).toFixed(1) + " miles";
+  }
+  // relative direction of a target bearing given the heading you're facing
+  function relativeDir(targetBearing, heading) {
+    if (heading == null) return "ahead";
+    var d = ((targetBearing - heading) % 360 + 360) % 360;
+    if (d < 22.5 || d >= 337.5) return "straight ahead";
+    if (d < 67.5) return "ahead to your right";
+    if (d < 112.5) return "to your right";
+    if (d < 157.5) return "behind you to your right";
+    if (d < 202.5) return "behind you";
+    if (d < 247.5) return "behind you to your left";
+    if (d < 292.5) return "to your left";
+    return "ahead to your left";
+  }
+
+  // ---------- tabs ----------
+  var tabBtns = document.querySelectorAll(".tabs button");
+  tabBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      tabBtns.forEach(function (x) { x.setAttribute("aria-selected", "false"); });
+      b.setAttribute("aria-selected", "true");
+      document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+      document.getElementById("panel-" + b.getAttribute("data-tab")).classList.add("active");
+      if (b.getAttribute("data-tab") === "camera") startCamera();
+      else stopCamera();
+    });
+  });
+
+  // ---------- location ----------
+  var lastPos = null;      // {lat, lon}
+  var lastPoiAt = 0;       // timestamp of last POI announcement
+  var lastPoiPos = null;
+  var announceOn = read(LS.announce, "1") === "1";
+
+  function getPos() {
+    return new Promise(function (res, rej) {
+      if (!navigator.geolocation) return rej(new Error("no geo"));
+      navigator.geolocation.getCurrentPosition(function (p) {
+        res({ lat: p.coords.latitude, lon: p.coords.longitude });
+      }, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+    });
+  }
+
+  async function reverseGeocode(lat, lon) {
+    var url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" +
+      encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lon) +
+      "&zoom=18&accept-language=en";
+    var r = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!r.ok) throw new Error("geo fail");
+    var d = await r.json();
+    var a = d.address || {};
+    var parts = [];
+    if (a.road) parts.push(a.road);
+    if (a.suburb || a.neighbourhood) parts.push(a.suburb || a.neighbourhood);
+    if (a.city || a.town || a.village) parts.push(a.city || a.town || a.village);
+    return parts.length ? parts.join(", ") : (d.display_name || "unknown location").split(",").slice(0, 2).join(",");
+  }
+
+  function poiLabel(tags) {
+    if (!tags) return "place";
+    if (tags.highway === "bus_stop") return "bus stop";
+    if (tags.public_transport) return "transit stop";
+    if (tags.amenity) return tags.amenity.replace(/_/g, " ");
+    if (tags.shop) return tags.shop.replace(/_/g, " ") + " shop";
+    if (tags.tourism) return tags.tourism.replace(/_/g, " ");
+    if (tags.leisure) return tags.leisure.replace(/_/g, " ");
+    return "place";
+  }
+  function poiName(el) {
+    var tags = el.tags || {};
+    return tags.name || poiLabel(tags);
+  }
+
+  async function nearbyPOIs(lat, lon, radiusM) {
+    radiusM = radiusM || 200;
+    var q = "[out:json][timeout:25];(" +
+      'node["highway"="bus_stop"](around:' + radiusM + "," + lat + "," + lon + ");" +
+      'node["amenity"](around:' + radiusM + "," + lat + "," + lon + ");" +
+      'node["shop"](around:' + radiusM + "," + lat + "," + lon + ");" +
+      'node["public_transport"="platform"](around:' + radiusM + "," + lat + "," + lon + ");" +
+      'node["tourism"](around:' + radiusM + "," + lat + "," + lon + ");" +
+      ");out 30;";
+    var r = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "data=" + encodeURIComponent(q)
+    });
+    if (!r.ok) throw new Error("places fail");
+    var d = await r.json();
+    var out = (d.elements || []).map(function (el) {
+      var feet = distFeet(lat, lon, el.lat, el.lon);
+      return { name: poiName(el), feet: feet,
+               bearing: bearingTo(lat, lon, el.lat, el.lon) };
+    });
+    out.sort(function (a, b) { return a.feet - b.feet; });
+    return out.slice(0, 6);
+  }
+
+  var whereEl = document.getElementById("where-am-i");
+  var poiListEl = document.getElementById("poi-list");
+
+  async function updateWhere() {
+    try {
+      var p = await getPos();
+      lastPos = p;
+      var addr = await reverseGeocode(p.lat, p.lon);
+      whereEl.textContent = addr;
+      return p;
+    } catch (e) {
+      whereEl.textContent = "Couldn't get your location. Check location is turned on.";
+      say("Couldn't get your location.");
+      return null;
+    }
+  }
+
+  function renderPOIs(pois, heading) {
+    poiListEl.innerHTML = "";
+    if (!pois.length) {
+      poiListEl.innerHTML = '<p class="note">No named places found within 200 meters.</p>';
+      return;
+    }
+    pois.forEach(function (p) {
+      var div = document.createElement("div");
+      div.className = "poi";
+      var rel = heading != null ? ", " + relativeDir(p.bearing, heading) : "";
+      div.innerHTML = '<span class="d">' + esc(fmtDist(p.feet)) + rel + '</span> &mdash; ' + esc(p.name);
+      poiListEl.appendChild(div);
+    });
+  }
+
+  function esc(t) {
+    return String(t == null ? "" : t).replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  async function updatePOIs(announce) {
+    var p = lastPos || await getPos().catch(function () { return null; });
+    if (!p) { poiListEl.innerHTML = '<p class="note">Need your location first.</p>'; return; }
+    lastPos = p;
+    try {
+      var pois = await nearbyPOIs(p.lat, p.lon);
+      renderPOIs(pois, currentHeading);
+      if (announce && pois.length) {
+        var bits = pois.slice(0, 3).map(function (x) {
+          var rel = currentHeading != null ? ", " + relativeDir(x.bearing, currentHeading) : "";
+          return x.name + ", " + fmtDist(x.feet) + rel;
+        });
+        say("Near you: " + bits.join(". "));
+        status("Near you: " + bits.join(". "));
+      }
+    } catch (e) {
+      poiListEl.innerHTML = '<p class="note">Places lookup had trouble. Try again.</p>';
+    }
+  }
+
+  document.getElementById("btn-where").addEventListener("click", async function () {
+    var p = await updateWhere();
+    if (p) say("You are near " + whereEl.textContent);
+  });
+  document.getElementById("btn-refresh-poi").addEventListener("click", function () {
+    updatePOIs(true);
+  });
+
+  // walking watch: announce when moved enough and enough time passed
+  function maybeAnnounceWalk(p) {
+    if (!announceOn) return;
+    var now = Date.now();
+    if (now - lastPoiAt < 45000) return;
+    if (lastPoiPos && distFeet(lastPoiPos.lat, lastPoiPos.lon, p.lat, p.lon) < 100) return;
+    lastPoiAt = now;
+    lastPoiPos = p;
+    updatePOIs(true);
+  }
+  try {
+    if (navigator.geolocation && navigator.geolocation.watchPosition) {
+      navigator.geolocation.watchPosition(function (pos) {
+        var p = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        lastPos = p;
+        maybeAnnounceWalk(p);
+        updateGuidance(p);
+      }, function () {}, { enableHighAccuracy: true, timeout: 20000, maximumAge: 15000 });
+    }
+  } catch (e) {}
+
+  // ---------- compass ----------
+  var currentHeading = null;
+  var lastCompassSpoke = 0;
+  var compassAuto = read(LS.compassAuto, "0") === "1";
+  var faceEl = document.getElementById("compass-face");
+  var degEl = document.getElementById("compass-deg");
+
+  function onHeading(deg) {
+    currentHeading = ((deg % 360) + 360) % 360;
+    var label = compassDir(currentHeading);
+    faceEl.textContent = label;
+    degEl.textContent = label + ", " + Math.round(currentHeading) + " degrees";
+    if (compassAuto && Date.now() - lastCompassSpoke > 15000) {
+      lastCompassSpoke = Date.now();
+      say(degEl.textContent);
+    }
+  }
+  function headingFromEvent(e) {
+    if (typeof e.webkitCompassHeading === "number") return e.webkitCompassHeading;
+    if (e.absolute === true && typeof e.alpha === "number") return (360 - e.alpha) % 360;
+    if (typeof e.alpha === "number") return (360 - e.alpha) % 360;
+    return null;
+  }
+  try {
+    window.addEventListener("deviceorientationabsolute", function (e) {
+      var h = headingFromEvent(e);
+      if (h != null) onHeading(h);
+    }, true);
+    window.addEventListener("deviceorientation", function (e) {
+      if (currentHeading == null) {
+        var h = headingFromEvent(e);
+        if (h != null) onHeading(h);
+      }
+    }, true);
+  } catch (e) {}
+
+  document.getElementById("btn-heading").addEventListener("click", function () {
+    if (currentHeading == null) { say("Compass isn't ready yet."); return; }
+    say(degEl.textContent);
+  });
+
+  // ---------- switches ----------
+  function wireSwitch(id, lsKey, initial, onChange) {
+    var el = document.getElementById(id);
+    var on = read(lsKey, initial ? "1" : "0") === "1";
+    function paint() { el.setAttribute("aria-pressed", on ? "true" : "false"); el.textContent = on ? "On" : "Off"; }
+    paint();
+    el.addEventListener("click", function () {
+      on = !on; store(lsKey, on ? "1" : "0"); paint();
+      if (onChange) onChange(on);
+    });
+    return function () { return on; };
+  }
+  var getAnnounce = wireSwitch("sw-announce", LS.announce, true, function (on) { announceOn = on; });
+  wireSwitch("sw-voice", LS.voice, true, function (on) { voiceOn = on; });
+  wireSwitch("sw-compass-auto", LS.compassAuto, false, function (on) { compassAuto = on; });
+
+  // ---------- camera + AI vision ----------
+  var video = document.getElementById("cam-preview");
+  var camStream = null;
+  var camResult = document.getElementById("cam-result");
+  var btnDescribe = document.getElementById("btn-describe");
+  var btnReadSign = document.getElementById("btn-readsign");
+
+  function geminiKey() { return (read(LS.key, "") || "").trim(); }
+
+  async function startCamera() {
+    if (camStream) return;
+    try {
+      var s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }, audio: false
+      });
+      camStream = s;
+      video.srcObject = s;
+      video.style.display = "block";
+      await video.play().catch(function () {});
+      btnDescribe.disabled = false;
+      btnReadSign.disabled = false;
+    } catch (e) {
+      camResult.textContent = "Couldn't start the camera. Check camera permission.";
+      say("Couldn't start the camera.");
+    }
+  }
+  function stopCamera() {
+    try { if (camStream) camStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+    camStream = null;
+    video.style.display = "none";
+    btnDescribe.disabled = true;
+    btnReadSign.disabled = true;
+  }
+  document.getElementById("btn-cam-start").addEventListener("click", startCamera);
+
+  function capturePhoto() {
+    return new Promise(function (res, rej) {
+      try {
+        var c = document.createElement("canvas");
+        var w = video.videoWidth || 1280, h = video.videoHeight || 720;
+        var scale = Math.min(1, 1280 / w);
+        c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+        c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+        var url = c.toDataURL("image/jpeg", 0.7);
+        res(url.split(",")[1]);
+      } catch (e) { rej(e); }
+    });
+  }
+
+  async function askGemini(base64, prompt) {
+    var key = geminiKey();
+    if (!key) {
+      say("Add your free Gemini key in the AI vision key section first.");
+      document.getElementById("gemini-key").focus();
+      return;
+    }
+    camResult.textContent = "Thinking\u2026";
+    say("Looking.");
+    try {
+      var r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" +
+        GEMINI_MODEL + ":generateContent?key=" + encodeURIComponent(key), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [
+          { text: prompt },
+          { inline_data: { mime_type: "image/jpeg", data: base64 } }
+        ] }] })
+      });
+      var d = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error((d.error && d.error.message) || ("HTTP " + r.status));
+      var text = (((d.candidates || [])[0] || {}).content || {}).parts || [];
+      var out = text.map(function (p) { return p.text || ""; }).join(" ").trim();
+      if (!out) throw new Error("empty answer");
+      camResult.textContent = out;
+      say(out);
+    } catch (e) {
+      camResult.textContent = "Had trouble: " + e.message;
+      say("Had trouble looking at that.");
+    }
+  }
+
+  btnDescribe.addEventListener("click", async function () {
+    try {
+      var b64 = await capturePhoto();
+      askGemini(b64, "You are helping a blind person walking outside. " +
+        "Describe this photo briefly in 2-3 sentences: what is ahead, any obstacles " +
+        "or hazards on the path, and anything notable. Be concrete and practical.");
+    } catch (e) { say("Couldn't take the photo."); }
+  });
+  btnReadSign.addEventListener("click", async function () {
+    try {
+      var b64 = await capturePhoto();
+      askGemini(b64, "Read all visible text in this photo out loud, exactly as written. " +
+        "If there is no readable text, say 'no readable text found'.");
+    } catch (e) { say("Couldn't take the photo."); }
+  });
+
+  document.getElementById("btn-save-key").addEventListener("click", function () {
+    var v = document.getElementById("gemini-key").value.trim();
+    store(LS.key, v);
+    say(v ? "Key saved." : "Key cleared.");
+    camResult.textContent = v ? "Key saved on this phone." : "Key cleared.";
+  });
+  document.getElementById("gemini-key").value = geminiKey();
+
+  // ---------- saved spots + guidance ----------
+  var spots = [];
+  try { spots = JSON.parse(read(LS.spots, "[]")) || []; } catch (e) { spots = []; }
+  var guiding = null; // spot being guided to
+  var lastGuideSpoke = 0;
+  var guideBanner = document.getElementById("guide-banner");
+  var spotListEl = document.getElementById("spot-list");
+
+  function saveSpots() { store(LS.spots, JSON.stringify(spots)); }
+
+  function renderSpots() {
+    spotListEl.innerHTML = "";
+    if (!spots.length) {
+      spotListEl.innerHTML = '<p class="note">No saved spots yet.</p>';
+      return;
+    }
+    spots.forEach(function (sp, i) {
+      var div = document.createElement("div");
+      div.className = "spot";
+      var nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = sp.name;
+      var go = document.createElement("button");
+      var isGuiding = guiding && guiding.idx === i;
+      go.textContent = isGuiding ? "Stop" : "Guide me";
+      if (isGuiding) go.className = "stop";
+      go.setAttribute("aria-label", (isGuiding ? "Stop guiding to " : "Guide me to ") + sp.name);
+      go.addEventListener("click", function () {
+        if (isGuiding) stopGuidance();
+        else startGuidance(i);
+      });
+      var del = document.createElement("button");
+      del.textContent = "Delete";
+      del.style.background = "#333"; del.style.color = "#fff";
+      del.setAttribute("aria-label", "Delete " + sp.name);
+      del.addEventListener("click", function () {
+        if (guiding && guiding.idx === i) stopGuidance();
+        spots.splice(i, 1); saveSpots(); renderSpots();
+        say(sp.name + " deleted.");
+      });
+      div.appendChild(nm); div.appendChild(go); div.appendChild(del);
+      spotListEl.appendChild(div);
+    });
+  }
+
+  document.getElementById("btn-save-spot").addEventListener("click", async function () {
+    var name = document.getElementById("spot-name").value.trim() || "Spot " + (spots.length + 1);
+    say("Saving " + name + ". Getting your location.");
+    var p = await getPos().catch(function () { return null; });
+    if (!p) { say("Couldn't get your location."); return; }
+    spots.push({ name: name, lat: p.lat, lon: p.lon });
+    saveSpots(); renderSpots();
+    document.getElementById("spot-name").value = "";
+    say(name + " saved.");
+  });
+
+  function startGuidance(i) {
+    guiding = { idx: i };
+    lastGuideSpoke = 0;
+    guideBanner.style.display = "block";
+    say("Guiding you to " + spots[i].name + ".");
+    renderSpots();
+    if (lastPos) updateGuidance(lastPos, true);
+  }
+  function stopGuidance() {
+    guiding = null;
+    guideBanner.style.display = "none";
+    say("Guidance stopped.");
+    renderSpots();
+  }
+  function updateGuidance(p, force) {
+    if (!guiding || !spots[guiding.idx]) return;
+    var sp = spots[guiding.idx];
+    var feet = distFeet(p.lat, p.lon, sp.lat, sp.lon);
+    var b = bearingTo(p.lat, p.lon, sp.lat, sp.lon);
+    var rel = relativeDir(b, currentHeading);
+    var txt = sp.name + ": " + fmtDist(feet) + " " + rel;
+    guideBanner.textContent = txt;
+    var now = Date.now();
+    if (force || now - lastGuideSpoke > 20000 || feet < 60) {
+      lastGuideSpoke = now;
+      say(feet < 60 ? "You have arrived at " + sp.name + "." : txt);
+      if (feet < 60) stopGuidance();
+    }
+  }
+
+  // ---------- boot ----------
+  renderSpots();
+  updateWhere().then(function (p) { if (p) updatePOIs(false); });
+  say("Lynxos Explore ready.");
+})();
+</script>
+</body>
+</html>
