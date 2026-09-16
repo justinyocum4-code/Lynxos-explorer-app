@@ -1,4 +1,3 @@
-
 name: Build APK
 
 on:
@@ -330,7 +329,11 @@ jobs:
         run: |
           export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/lynxos-release.p12
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > /tmp/lynxos-release.p12
+          if [ ! -s /tmp/lynxos-release.p12 ]; then
+            echo "ERROR: signing key secret is empty or did not decode. Re-add the KEYSTORE_BASE64 secret."
+            exit 1
+          fi
           "$APKSIGNER" sign --ks /tmp/lynxos-release.p12 --ks-type PKCS12 \
             --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
             --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
